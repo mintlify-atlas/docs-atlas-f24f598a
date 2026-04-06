@@ -1,0 +1,125 @@
+---
+title: "Benchmarks with Setup"
+description: "Use run_with_setup() when your benchmark mutates its input and needs fresh state each iteration."
+---
+
+## The problem with mutating benchmarks
+
+Consider benchmarking a sorting algorithm using `run()`:
+
+```cpp
+auto data = generate_random_data(10000);
+
+stage.run("sort", [&] {
+   std::sort(data.begin(), data.end());
+   return data.size() * sizeof(int);
+});
+```
+
+This looks correct, but it is not. In the first iteration `data` is random — the expected workload. In every subsequent iteration `data` is already sorted, which is a fundamentally different performance profile. The benchmark measures something different after the first run.
+
+## Solution: run_with_setup()
+
+`run_with_setup()` accepts two functions: a **setup** function that runs before each iteration (untimed) and a **benchmark** function that is timed. The return value of the setup function is passed by reference to the benchmark function.
+
+### Signature
+
+```cpp
+template <class Setup, class Function>
+const performance_metrics& run_with_setup(
+    std::string_view subject_name,
+    Setup&& setup,      // called before each iteration, untimed
+    Function&& function // called each iteration, timed
+);
+```
+
+### Example
+
+```cpp
+stage.run_with_setup("sort",
+   [] {
+      // Setup: called before each iteration, NOT timed
+      return generate_random_data(10000);
+   },
+   [](auto& data) {
+      // Benchmark: timed
+      std::sort(data.begin(), data.end());
+      return data.size() * sizeof(int);
+   }
+);
+```
+
+The setup function returns fresh random data before every timed iteration, ensuring every measurement reflects sorting unsorted data.
+
+<Warning>
+For algorithms that mutate their input, always use `run_with_setup`. Without it, you are measuring a different workload after the first iteration, producing results that cannot be trusted.
+</Warning>
+
+## When NOT to use run_with_setup
+
+For read-only operations — searching, hashing, encoding, serializing without in-place modification — the input does not change between iterations. Set up once before calling `run()`:
+
+```cpp
+auto data = load_data();  // setup once, outside run()
+
+stage.run("search", [&] {
+   auto result = binary_search(data, target);
+   bencher::do_not_optimize(result);
+   return data.size() * sizeof(int);
+});
+```
+
+This is more efficient than `run_with_setup` because the setup cost is paid only once.
+
+## Use cases where run_with_setup is essential
+
+- **Sorting algorithms** — data must be unsorted each time
+- **In-place algorithms** — the input is modified and cannot be reused without resetting
+- **Consuming data structures** — queues, stacks, or other structures that are emptied by the benchmark function
+
+## Full example
+
+```cpp
+#include "bencher/bencher.hpp"
+#include "bencher/diagnostics.hpp"
+
+#include <algorithm>
+#include <random>
+#include <vector>
+
+std::vector<int> generate_random_data(size_t n)
+{
+   std::vector<int> data(n);
+   std::mt19937 rng(42);
+   std::ranges::generate(data, rng);
+   return data;
+}
+
+int main()
+{
+   bencher::stage stage{"Sorting with Fresh Data"};
+
+   stage.run_with_setup("std::sort",
+      [] {
+         return generate_random_data(10000);
+      },
+      [](auto& data) {
+         std::sort(data.begin(), data.end());
+         return data.size() * sizeof(int);
+      }
+   );
+
+   stage.run_with_setup("std::stable_sort",
+      [] {
+         return generate_random_data(10000);
+      },
+      [](auto& data) {
+         std::stable_sort(data.begin(), data.end());
+         return data.size() * sizeof(int);
+      }
+   );
+
+   bencher::print_results(stage);
+   return 0;
+}
+```

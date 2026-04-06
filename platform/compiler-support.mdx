@@ -1,0 +1,47 @@
+---
+title: "Compiler Support"
+description: "Supported compilers and build configuration for Bencher."
+---
+
+Bencher requires **C++23**. The following compilers are tested on CI:
+
+| Compiler | Tested Versions | Platforms |
+|----------|-----------------|-----------|
+| GCC | 13, 14 | Linux |
+| Clang | 17, 18, 19 | Linux, macOS |
+| MSVC | Latest | Windows |
+| Apple Clang | Latest | macOS |
+
+## CMake Configuration
+
+### Requirements
+
+- **CMake 3.24 or later** — required for `FetchContent` with `GIT_SHALLOW` support.
+- The library's CMake target (`bencher::bencher`) is an `INTERFACE` target that automatically propagates `cxx_std_23` to any target that links against it. No extra `target_compile_features` call is needed in your `CMakeLists.txt`.
+
+### Compiler Flags (Applied Automatically)
+
+Bencher's CMake interface sets the following flags on all consuming targets automatically — you do not need to add them manually:
+
+- **MSVC**: `/Zc:preprocessor`, `/GL`, `/permissive-`, `/Zc:lambda`
+- **Non-MSVC (GCC, Clang, Apple Clang)**: `-Wno-missing-braces`
+
+### CMake Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `BENCHER_ENABLE_JSON` | `OFF` | Enable JSON output support. Fetches the [Glaze](https://github.com/stephenberry/glaze) dependency automatically. |
+| `BUILD_TESTING` | `OFF` | Build the test suite. |
+
+## Building and Running Tests
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build --config Release
+cd build
+ctest -C Release --output-on-failure
+```
+
+<Note>
+  Bencher is a header-only library. Its CMake target is an `INTERFACE` target, meaning no library sources are compiled. Only your benchmark executables are compiled when you build your project. This keeps build times fast and integration simple.
+</Note>

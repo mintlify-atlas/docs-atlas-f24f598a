@@ -1,80 +1,110 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "Get up and running with Bencher in minutes."
 ---
 
-## Get started in three steps
+<Steps>
+  <Step title="Add Bencher via CMake FetchContent">
+    Add the following to your `CMakeLists.txt`:
 
-Get your documentation site running locally and make your first customization.
+    ```cmake CMakeLists.txt
+    include(FetchContent)
+    FetchContent_Declare(
+        bencher
+        GIT_REPOSITORY https://github.com/stephenberry/bencher.git
+        GIT_TAG main
+    )
+    FetchContent_MakeAvailable(bencher)
 
-### Step 1: Set up your local environment
+    target_link_libraries(your_target PRIVATE bencher::bencher)
+    ```
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    This fetches Bencher at configure time and makes the `bencher::bencher` target available to link against.
+  </Step>
 
-### Step 2: Deploy your changes
+  <Step title="Write your first benchmark">
+    Create a `benchmark.cpp` file with a stage, one or more `run` calls, and a `print_results` call:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```cpp benchmark.cpp
+    #include "bencher/bencher.hpp"
+    #include "bencher/diagnostics.hpp"
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    int main()
+    {
+       bencher::stage stage{"My Benchmarks"};
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+       stage.run("Algorithm A", [] {
+          // Your code to benchmark
+          // ...
+          return bytes_processed; // Return the number of bytes processed
+       });
 
-### Step 3: Go live
+       stage.run("Algorithm B", [] {
+          // Another implementation
+          // ...
+          return bytes_processed;
+       });
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+       bencher::print_results(stage);
 
-## Next steps
+       return 0;
+    }
+    ```
 
-Now that you have your docs running, explore these key features:
+    The lambda returns the number of bytes processed. Bencher uses this to compute throughput in MB/s. If throughput is not meaningful for your workload, you can return `void` — timing metrics are still collected.
+  </Step>
 
-<CardGroup cols={2}>
+  <Step title="Build and run">
+    Configure and build with CMake, then run the resulting binary:
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+    ```bash
+    cmake -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build
+    ./build/benchmark
+    ```
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+    Use `Release` mode. Debug builds disable optimizations and will produce artificially slow results.
+  </Step>
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+  <Step title="Understand the output">
+    After all benchmarks in a stage complete, Bencher prints a table of metrics for each subject followed by a comparison:
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+    ```
+    Performance Metrics for: JSON benchmarks
+    ----------------------------------------------------
+     - JSON Read -
+    Bytes Processed                         :        722
+    Throughput (MB/s)                        :       1847
+    Throughput MAD (±%)                      :       1.2
+    Instructions per Execution              :      45023
+    Instructions per Cycle                  :       2.31
+    Cycles per Execution                    :      19487
+    Frequency (GHz)                         :       3.21
+    Total Iterations                        :         47
+    ====================================================
+    ```
 
-</CardGroup>
+    | Field | What it tells you |
+    |-------|-------------------|
+    | **Throughput (MB/s)** | How fast data is processed. Higher is better. |
+    | **Throughput MAD (±%)** | Variability of throughput across iterations. Under 3% is typical; above 5% suggests noise. |
+    | **Instructions per Cycle (IPC)** | CPU efficiency. Values above 1.5 are typical; below 1 often indicates memory stalls. |
+    | **Cycles per Execution** | Raw CPU cycles for one benchmark run. |
+    | **Frequency (GHz)** | Estimated clock speed, derived from cycles and wall time. |
+    | **Total Iterations** | How many iterations Bencher ran before the confidence interval converged. |
+
+    When a stage has more than one subject, Bencher also prints a bar chart comparison:
+
+    ```
+    JSON Write is 23.5% faster than JSON Read
+    ====================================================
+
+    ████████████████████████████████████████│ JSON Write (2284)
+    ████████████████████████████████▍       │ JSON Read (1847)
+    ```
+  </Step>
+</Steps>
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Bencher runs a 1-second warmup automatically before the first benchmark in each stage. This lets the CPU reach its steady-state frequency before measurements begin, which improves reproducibility. You do not need to add a warmup yourself.
 </Note>

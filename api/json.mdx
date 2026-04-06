@@ -1,0 +1,93 @@
+---
+title: "JSON Output"
+description: "Export benchmark results as JSON for CI pipelines and programmatic analysis."
+---
+
+JSON output is optional and requires the [Glaze](https://github.com/stephenberry/glaze) library. When Glaze is not present, `bencher/json.hpp` compiles to nothing (the entire file is guarded by `#if __has_include(<glaze/glaze.hpp>)`).
+
+## Setup
+
+Enable JSON support in CMake before calling `FetchContent_MakeAvailable`:
+
+```cmake CMakeLists.txt
+set(BENCHER_ENABLE_JSON ON)
+FetchContent_MakeAvailable(bencher)
+```
+
+Then include the JSON header in your source file:
+
+```cpp
+#include "bencher/json.hpp"
+```
+
+## Functions
+
+### `to_json()`
+
+```cpp
+[[nodiscard]] inline std::string to_json(const bencher::stage& s);
+```
+
+Returns a compact (single-line) JSON string of all benchmark results collected in `s`. Serializes a `stage_result` struct containing the stage `name` and its `results` vector. Returns `"{}"` if serialization fails.
+
+### `to_json_pretty()`
+
+```cpp
+[[nodiscard]] inline std::string to_json_pretty(const bencher::stage& s);
+```
+
+Returns a pretty-printed (indented) JSON string of all benchmark results. Identical to `to_json()` except it passes `glz::opts{.prettify = true}` to Glaze. Returns `"{}"` if serialization fails.
+
+## Output schema
+
+The top-level object has a `name` key (the stage name) and a `results` array. Each element in `results` corresponds to one `performance_metrics` entry:
+
+```json
+{
+  "name": "JSON benchmarks",
+  "results": [
+    {
+      "name": "JSON Read",
+      "throughput_mb_per_sec": 1847.3,
+      "time_in_ns": 856420,
+      "bytes_processed": 722,
+      "instructions_per_execution": 45023,
+      "instructions_per_cycle": 2.31,
+      "total_iteration_count": 47
+    }
+  ]
+}
+```
+
+<Note>
+Fields backed by `std::optional` — hardware counter metrics such as `instructions_per_execution`, `cycles_per_execution`, `branches_per_execution`, etc. — are automatically excluded from the JSON output when they have no value. Builds on platforms without performance counter support (e.g., Windows) will produce JSON objects with fewer fields.
+</Note>
+
+## Complete CI example
+
+```cpp
+#include <iostream>
+#include "bencher/bencher.hpp"
+#include "bencher/diagnostics.hpp"
+#include "bencher/json.hpp"
+
+int main()
+{
+   bencher::stage stage{"CI Benchmarks"};
+
+   stage.run("critical_path", [] {
+      std::vector<int> data(100'000);
+      std::sort(data.begin(), data.end());
+      bencher::do_not_optimize(data);
+      return data.size() * sizeof(int);
+   });
+
+   // Print compact JSON to stdout for CI capture
+   std::cout << bencher::to_json(stage) << '\n';
+
+   // Save indented JSON as a build artifact
+   bencher::save_file(bencher::to_json_pretty(stage), "benchmark_results.json");
+
+   return 0;
+}
+```

@@ -1,28 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Bencher",
+  "projectType": "sdk-library",
+  "projectName": "Bencher",
+  "projectDescription": "A modern, header-only C++23 benchmarking library with hardware performance counter support and automatic statistical analysis.",
   "theme": "palm",
-  "colors": {
-    "primary": "#040404",
-    "light": "#34c4f4",
-    "dark": "#1770ba"
-  },
-  "favicon": "https://media.brand.dev/26fe1244-e968-4ca4-922b-abb6a7a611d6.png",
-  "logo": {
-    "light": "https://media.brand.dev/1a4ec443-b23b-44cf-b5a7-6328e991ad06.svg",
-    "dark": "https://media.brand.dev/a60b75ae-8d9c-49dc-b18a-50a63ae54d92.svg"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/stephenberry/bencher"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/stephenberry/bencher"
-    }
-  },
+  "primaryColor": "#040404",
+  "lightColor": "#34c4f4",
+  "darkColor": "#1770ba",
   "navigation": {
     "tabs": [
       {
@@ -81,5 +64,30 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Header-only single-include library (no linking required)",
+    "Hardware performance counters: CPU cycles, instructions, branches, branch misses",
+    "Automatic statistical analysis with 95% confidence interval-based iteration control",
+    "Cache-aware benchmarking with L1 cache eviction between runs",
+    "Multiple output formats: console, Markdown, SVG bar charts, and JSON",
+    "Parameterized benchmarks with run_with()",
+    "Per-iteration setup support via run_with_setup()",
+    "Cross-platform: Windows, Linux, macOS (including Apple Silicon)",
+    "Compiler support: GCC, Clang, MSVC, Apple Clang"
+  ],
+  "publicApiSurface": [
+    "bencher::stage",
+    "bencher::stage::run()",
+    "bencher::stage::run_with()",
+    "bencher::stage::run_with_setup()",
+    "bencher::performance_metrics",
+    "bencher::print_results()",
+    "bencher::to_markdown()",
+    "bencher::bar_chart()",
+    "bencher::to_json()",
+    "bencher::to_json_pretty()",
+    "bencher::save_file()",
+    "bencher::do_not_optimize()"
+  ]
 }

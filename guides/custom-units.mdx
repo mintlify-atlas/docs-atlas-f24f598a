@@ -1,0 +1,92 @@
+---
+title: "Custom Units"
+description: "Configure Bencher to report ops/s, items/s, or any custom throughput unit."
+---
+
+## Default units
+
+By default, a `bencher::stage` is configured for MB/s throughput:
+
+```cpp
+double throughput_units_divisor = 1024.0 * 1024.0; // divide bytes by this
+std::string throughput_units_label = "MB/s";
+std::string processed_units_label = "Bytes";
+```
+
+The benchmark function return value is treated as bytes processed. Throughput is computed as:
+
+```
+throughput = (return_value / throughput_units_divisor) / elapsed_seconds
+```
+
+## Configuring custom units
+
+Set three fields on the stage before calling `run()`:
+
+| Field | Purpose |
+|---|---|
+| `throughput_units_divisor` | Divisor applied to the return value before dividing by time |
+| `throughput_units_label` | Label shown in output (e.g., `"ops/s"`) |
+| `processed_units_label` | Label for the raw count shown in output (e.g., `"Ops"`) |
+
+<Note>
+All output functions — `print_results`, `to_markdown`, `bar_chart`, and `to_json` — automatically use the configured labels. No additional configuration is needed per output format.
+</Note>
+
+## ops/s — operations per second
+
+```cpp
+bencher::stage stage{"Zero-Copy Read"};
+stage.throughput_units_divisor = 1.0;
+stage.throughput_units_label = "ops/s";
+stage.processed_units_label = "Ops";
+
+stage.run("My Format", [&] {
+   perform_operation();
+   return ops_processed; // return number of ops
+});
+```
+
+With `divisor = 1.0`, the return value is divided directly by elapsed seconds to produce ops/s.
+
+## items/s — container or record throughput
+
+```cpp
+bencher::stage stage{"Container Benchmark"};
+stage.throughput_units_divisor = 1.0;
+stage.throughput_units_label = "items/s";
+stage.processed_units_label = "Items";
+
+stage.run("std::vector insert", [&] {
+   std::vector<int> v;
+   v.reserve(10000);
+   for (int i = 0; i < 10000; ++i) v.push_back(i);
+   bencher::do_not_optimize(v);
+   return uint64_t{10000}; // items processed
+});
+```
+
+## GB/s — memory bandwidth
+
+```cpp
+bencher::stage stage{"Memory Bandwidth"};
+stage.throughput_units_divisor = 1024.0 * 1024.0 * 1024.0;
+stage.throughput_units_label = "GB/s";
+stage.processed_units_label = "Bytes";
+
+stage.run("Sequential Read", [&] {
+   // ... memory access benchmark ...
+   return bytes_read;
+});
+```
+
+## MB/s (explicit)
+
+The default, shown here for completeness:
+
+```cpp
+bencher::stage stage{"Serialization"};
+stage.throughput_units_divisor = 1024.0 * 1024.0;
+stage.throughput_units_label = "MB/s";
+stage.processed_units_label = "Bytes";
+```

@@ -1,0 +1,54 @@
+---
+title: "Statistical Approach"
+description: "How Bencher uses confidence intervals and median-based statistics for reliable results."
+---
+
+Benchmarking is harder than it looks. Modern systems introduce many sources of noise: CPU frequency scaling, OS scheduler migrations, background processes, and thermal throttling can all cause individual timing measurements to vary by several percent. A naive approach — running a function once and recording the time — produces unreliable results that change between runs.
+
+Bencher addresses this with a statistics-first design that produces results you can trust.
+
+## How Bencher computes metrics
+
+**Median, not mean.** Every aggregate metric (throughput, cycles, instructions, branches) is computed as the median of the collected samples. The median is resistant to outliers — a single anomalously slow iteration caused by an OS interrupt will not distort the result the way it would when using the mean.
+
+**Median Absolute Deviation (MAD), not standard deviation.** Variability is reported as MAD: the median of the absolute deviations from the median. Like the median itself, MAD is robust to outliers and gives a stable estimate of spread even when a few samples are far from typical.
+
+**Automatic iteration count via 95% confidence interval.** Rather than requiring you to guess a fixed iteration count, bencher runs until it is statistically confident in the result. After each iteration (once `min_execution_count` is reached), it checks the 95% CI half-width relative to the mean throughput:
+
+```
+half_ci = 1.96 × (stddev / √n)
+relative_half_ci = (half_ci / mean) × 100
+```
+
+If `relative_half_ci < confidence_interval_threshold`, bencher stops. Otherwise it continues up to `max_execution_count`. The defaults are:
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `min_execution_count` | 30 | Never stop before 30 runs |
+| `max_execution_count` | 1000 | Never run more than 1000 times |
+| `confidence_interval_threshold` | 2.0 | Stop when the ±CI is within ±2% of mean throughput |
+
+## Tuning statistical behavior
+
+```cpp
+bencher::stage stage{"Precise Benchmarks"};
+stage.min_execution_count = 50;            // never stop before 50 runs
+stage.max_execution_count = 500;           // cap at 500 runs
+stage.confidence_interval_threshold = 1.0; // stop at ±1% CI
+```
+
+Tightening `confidence_interval_threshold` forces bencher to collect more samples before declaring a stable result, which is appropriate for high-stakes comparisons. Loosening it speeds up benchmarking at the cost of wider uncertainty.
+
+## Understanding throughput MAD
+
+`throughput_median_percentage_deviation` is computed per-run: for each iteration, bencher calculates how far that run's throughput deviates from the overall median throughput, expressed as a percentage. The final reported value is the median of those per-run percentage deviations.
+
+A low MAD (below 1–2%) means that nearly every run produced similar throughput — a sign of a stable, well-isolated benchmark. A high MAD (above 3–5%) means there is significant run-to-run variation that may be obscuring real performance differences between implementations.
+
+<Tip>
+If MAD is consistently high (>3%), pin the process to a single CPU core with `taskset -c 0 ./my_benchmark` on Linux to reduce scheduler-induced noise. This is optional — the CI-based iteration count already handles most variance — but it can help on heavily loaded or thermally constrained machines.
+</Tip>
+
+## CPU frequency warmup
+
+Before any benchmark in a stage runs, bencher performs a 1-second busy-loop warmup (`warmup_duration_ms = 1000` by default). This brings the CPU out of a low-power state and allows the clock frequency to stabilize at its operating level before measurements begin. Without the warmup, the first few samples may be taken at a reduced frequency, biasing the results low. The warmup runs only once per stage and can be disabled by setting `warmup_duration_ms = 0`.

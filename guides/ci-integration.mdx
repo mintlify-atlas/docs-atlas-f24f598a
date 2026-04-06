@@ -1,0 +1,120 @@
+---
+title: "CI Integration"
+description: "Track performance regressions automatically using JSON output in GitHub Actions or other CI systems."
+---
+
+Running benchmarks in CI lets you catch performance regressions before they merge. Each PR run produces structured JSON output that can be compared against a stored baseline, and the build fails automatically if throughput drops beyond a configurable threshold.
+
+**Requirements:** `BENCHER_ENABLE_JSON=ON` (fetches the [Glaze](https://github.com/stephenberry/glaze) dependency).
+
+---
+
+## Setup
+
+Add `bencher/json.hpp` to your benchmark executable and write results to both stdout and a file:
+
+```cpp
+// benchmark_ci.cpp
+#include "bencher/bencher.hpp"
+#include "bencher/diagnostics.hpp"
+#include "bencher/json.hpp"  // requires BENCHER_ENABLE_JSON
+
+int main()
+{
+   bencher::stage stage{"CI Benchmarks"};
+
+   stage.run("critical_path", [] {
+      std::vector<int> data(100'000);
+      std::sort(data.begin(), data.end());
+      bencher::do_not_optimize(data);
+      return data.size() * sizeof(int);
+   });
+
+   // Output JSON for CI parsing
+   std::cout << bencher::to_json(stage) << std::endl;
+
+   // Save artifacts
+   bencher::save_file(bencher::to_json_pretty(stage), "benchmark_results.json");
+   bencher::save_file(bencher::bar_chart(stage),      "benchmark_results.svg");
+
+   return 0;
+}
+```
+
+---
+
+## GitHub Actions workflow
+
+```yaml
+# .github/workflows/benchmark.yml
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build benchmarks
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DBENCHER_ENABLE_JSON=ON
+          cmake --build build --target benchmark_ci
+
+      - name: Run benchmarks
+        run: |
+          # Pin to CPU 0 for consistent results
+          taskset -c 0 ./build/benchmark_ci > results.json
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            results.json
+            benchmark_results.svg
+```
+
+---
+
+## Regression detection
+
+Save `baseline.json` as a CI artifact from the `main` branch, then compare it against the current run on PRs using `jq`:
+
+```bash
+#!/bin/bash
+# scripts/check_regression.sh
+
+THRESHOLD=10  # alert if performance drops more than 10%
+
+current=$(jq '.results[0].throughput_mb_per_sec' results.json)
+baseline=$(jq '.results[0].throughput_mb_per_sec' baseline.json)
+
+change=$(echo "scale=2; (($current - $baseline) / $baseline) * 100" | bc)
+
+if (( $(echo "$change < -$THRESHOLD" | bc -l) )); then
+  echo "Performance regression detected: ${change}%"
+  exit 1
+fi
+
+echo "Performance change: ${change}%"
+```
+
+Run this script as a step after the benchmark step in your workflow. A non-zero exit code will fail the CI job.
+
+---
+
+## Tips
+
+- **Pin to a single CPU core.** On Linux, use `taskset -c 0 ./benchmark` to prevent the scheduler from migrating the process between cores mid-run. This is the single most effective way to reduce measurement variance in shared CI environments.
+- **Store baselines as artifacts.** Upload `baseline.json` from the `main` branch build and download it in PR workflows for comparison.
+- **Avoid noisy runners.** GitHub-hosted runners share hardware and can produce high variance. For critical benchmarks, consider self-hosted runners where you control CPU frequency scaling (disable Turbo Boost and set the governor to `performance`).
+
+<Tip>
+For even more stable CI results, consider dedicated benchmark machines or self-hosted runners where you can control CPU frequency scaling. Disabling Turbo Boost and setting the CPU governor to `performance` mode can reduce run-to-run variance significantly.
+</Tip>

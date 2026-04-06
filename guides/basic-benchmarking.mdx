@@ -1,0 +1,144 @@
+---
+title: "Basic Benchmarking"
+description: "Learn the core pattern for writing benchmarks with Bencher."
+---
+
+## Core pattern
+
+Every Bencher benchmark follows three steps: create a stage, call `run()` for each subject, then print results.
+
+```cpp
+#include "bencher/bencher.hpp"
+#include "bencher/diagnostics.hpp"
+
+int main()
+{
+   bencher::stage stage{"My Benchmarks"};
+
+   stage.run("Algorithm A", [&] {
+      // code to benchmark
+      return bytes_processed;
+   });
+
+   stage.run("Algorithm B", [&] {
+      // another implementation
+      return bytes_processed;
+   });
+
+   bencher::print_results(stage);
+   return 0;
+}
+```
+
+The `stage` holds configuration, accumulates results, and provides the `run()` method. `print_results()` outputs metrics to the console and, when more than one subject is registered, prints a comparison bar chart.
+
+## Return value convention
+
+The return value of a benchmark function controls whether throughput is calculated.
+
+**Return `uint64_t` bytes processed** to enable throughput in MB/s (or your configured unit):
+
+```cpp
+// Returns bytes — enables throughput calculation
+stage.run("Parse JSON", [&] {
+   parse(buffer);
+   return buffer.size();
+});
+```
+
+**Return `void`** for latency-focused benchmarks where throughput is not meaningful. Timing metrics are still collected; throughput will be reported as 0.
+
+```cpp
+// Returns void — latency only
+stage.run("Compute", [] {
+   expensive_calculation();
+   // no return needed
+});
+```
+
+## Preventing compiler optimizations
+
+The compiler may eliminate code whose result is unused, producing misleadingly fast benchmarks. Use `bencher::do_not_optimize` to prevent this:
+
+```cpp
+stage.run("Compute", [] {
+   double result = expensive_computation();
+   bencher::do_not_optimize(result); // prevent optimization
+   return sizeof(result);
+});
+```
+
+`do_not_optimize` works with values, void functions, and functions that return values:
+
+```cpp
+bencher::do_not_optimize(value);
+bencher::do_not_optimize(func, args...);
+```
+
+## Baseline comparison
+
+By default, `print_results()` compares all subjects against the slowest one. To pin comparisons to a specific implementation, set `stage.baseline` before running:
+
+```cpp
+bencher::stage stage{"Sorting Algorithms"};
+stage.baseline = "std::sort"; // all results compared against std::sort
+```
+
+If the named baseline is not found among results, Bencher falls back to the slowest subject and prints a warning.
+
+## Complete example: comparing sorting algorithms
+
+```cpp
+#include "bencher/bencher.hpp"
+#include "bencher/diagnostics.hpp"
+
+#include <algorithm>
+#include <random>
+#include <vector>
+
+int main()
+{
+   // Generate random data
+   std::vector<int> data(100'000);
+   std::mt19937 rng(42);
+   std::ranges::generate(data, rng);
+
+   bencher::stage stage{"Sorting Algorithms"};
+   stage.baseline = "std::sort"; // compare all results to std::sort
+
+   stage.run("std::sort", [&] {
+      auto copy = data;
+      std::sort(copy.begin(), copy.end());
+      bencher::do_not_optimize(copy);
+      return copy.size() * sizeof(int);
+   });
+
+   stage.run("std::stable_sort", [&] {
+      auto copy = data;
+      std::stable_sort(copy.begin(), copy.end());
+      bencher::do_not_optimize(copy);
+      return copy.size() * sizeof(int);
+   });
+
+   stage.run("std::ranges::sort", [&] {
+      auto copy = data;
+      std::ranges::sort(copy);
+      bencher::do_not_optimize(copy);
+      return copy.size() * sizeof(int);
+   });
+
+   stage.run("partial_sort (10%)", [&] {
+      auto copy = data;
+      std::partial_sort(copy.begin(), copy.begin() + copy.size() / 10, copy.end());
+      bencher::do_not_optimize(copy);
+      return copy.size() * sizeof(int);
+   });
+
+   bencher::print_results(stage);
+   return 0;
+}
+```
+
+<Tip>
+Notice that each lambda starts with `auto copy = data`. This is the idiomatic way to benchmark algorithms that mutate their input without disturbing the original. For cases where fresh state is required on every iteration (not just every call to `run()`), use [`run_with_setup()`](/guides/setup-benchmarks) instead.
+</Tip>

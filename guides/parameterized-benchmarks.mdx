@@ -1,0 +1,88 @@
+---
+title: "Parameterized Benchmarks"
+description: "Test the same algorithm across multiple input sizes with run_with()."
+---
+
+## What are parameterized benchmarks?
+
+Parameterized benchmarks run the same benchmark function against a list of parameter values — typically input sizes — and record each result separately. They are the primary tool for understanding how an algorithm scales: does it grow as O(n), O(n log n), or O(n²)? At what size does a cache miss penalty become significant?
+
+## run_with() with an initializer list
+
+Pass the parameter values inline as an initializer list:
+
+```cpp
+stage.run_with("sort", [](size_t n) {
+   std::vector<int> data(n);
+   std::iota(data.begin(), data.end(), 0);
+   std::sort(data.begin(), data.end());
+   bencher::do_not_optimize(data);
+   return n * sizeof(int);
+}, {1000, 10000, 100000, 1000000});
+```
+
+Results are stored under names formatted as `"base_name/param_value"` — for example: `"sort/1000"`, `"sort/10000"`, `"sort/100000"`, `"sort/1000000"`. These names appear in all output formats (console, Markdown, SVG, JSON).
+
+## run_with() with a range
+
+Any range type is accepted in the second overload — `std::vector`, `std::array`, `std::span`, or a custom range satisfying `std::ranges::input_range`:
+
+```cpp
+std::vector<size_t> sizes = {1000, 10000, 100000};
+stage.run_with("algorithm", my_func, sizes);
+```
+
+## Template signatures
+
+```cpp
+// Initializer list overload
+template <class Function, class T>
+void run_with(std::string_view base_name,
+              Function&& function,
+              std::initializer_list<T> params);
+
+// Range overload
+template <class Function, class Range>
+   requires std::ranges::input_range<Range>
+void run_with(std::string_view base_name,
+              Function&& function,
+              const Range& params);
+```
+
+<Note>
+The parameter value is forwarded directly as the argument to `function`. The function must accept exactly one parameter whose type matches the element type of the list or range.
+</Note>
+
+## When to use parameterized benchmarks
+
+- **Algorithmic complexity** — run at sizes 1 000, 10 000, 100 000, 1 000 000 and check whether doubling the input doubles (O(n)) or quadruples (O(n²)) the time
+- **Cache effects** — identify the inflection point where working set size exceeds L1 or L2 cache and throughput drops
+- **Memory allocation overhead** — measure whether small vs. large allocations behave differently
+- **Comparing O(n log n) vs. O(n²) implementations** — at small n the constant factors dominate; parameterized benchmarks make cross-over points visible
+
+## Full example
+
+```cpp
+#include "bencher/bencher.hpp"
+#include "bencher/diagnostics.hpp"
+
+#include <algorithm>
+#include <numeric>
+#include <vector>
+
+int main()
+{
+   bencher::stage stage{"Sort Scaling"};
+
+   stage.run_with("std::sort", [](size_t n) {
+      std::vector<int> data(n);
+      std::iota(data.begin(), data.end(), 0);
+      std::sort(data.begin(), data.end());
+      bencher::do_not_optimize(data);
+      return n * sizeof(int);
+   }, {1000, 10000, 100000, 1000000});
+
+   bencher::print_results(stage);
+   return 0;
+}
+```

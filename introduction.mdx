@@ -1,0 +1,64 @@
+---
+title: "Introduction"
+description: "Bencher is a modern, header-only C++23 benchmarking library with hardware performance counter support and automatic statistical analysis."
+---
+
+Bencher is a C++23 library for writing precise, reproducible benchmarks. Drop a single header into your project, write a lambda, and get back throughput numbers, hardware counter data, and statistically rigorous confidence intervals — no linking step, no framework to install.
+
+## Why Bencher?
+
+Most benchmarking approaches rely on `std::chrono` wall-clock timings and a simple average. This works for rough comparisons, but it misses a lot:
+
+- **Outliers skew means.** A single GC pause or OS interrupt inflates your result. Bencher uses the median.
+- **You don't know *why* it's slow.** Wall time doesn't tell you whether you're memory-bound, branch-bound, or compute-bound. Bencher reads hardware performance counters directly.
+- **You can't tell when you have enough data.** Bencher runs until a 95% confidence interval on throughput converges to within your target threshold, then stops automatically.
+
+Use Bencher when you care about understanding performance, not just measuring it. If you only need a rough "is A faster than B" answer and your workload is stable, a simple `std::chrono` loop is fine. When you need to understand *how much* faster and *why*, Bencher gives you the data.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Header-only" icon="file-code">
+    Single `#include` with no linking required. Add the include path and you're done.
+  </Card>
+  <Card title="Hardware performance counters" icon="microchip">
+    Reads CPU cycles, instructions, branches, and branch misses directly from hardware on macOS, Linux, and Windows.
+  </Card>
+  <Card title="Automatic statistical analysis" icon="chart-line">
+    Runs until a 95% confidence interval on throughput converges, then reports median and MAD — not noisy means.
+  </Card>
+  <Card title="Cache-aware benchmarking" icon="database">
+    Automatically evicts the L1 data cache between runs so you get consistent cold-cache measurements.
+  </Card>
+  <Card title="Multiple output formats" icon="file-export">
+    Console output with bar charts, Markdown reports, SVG charts, and optional JSON for CI pipelines.
+  </Card>
+  <Card title="Cross-platform" icon="laptop">
+    Supports Windows, Linux, and macOS including Apple Silicon. Tested with GCC, Clang, MSVC, and Apple Clang.
+  </Card>
+</CardGroup>
+
+## Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| C++ standard | C++23 |
+| Compiler | GCC 13+, Clang 17+, MSVC latest, Apple Clang latest |
+| CMake | 3.24+ (only needed for the FetchContent installation method) |
+
+No additional dependencies are required for the core library. JSON output support optionally depends on [Glaze](https://github.com/stephenberry/glaze), which CMake fetches automatically when you enable it.
+
+## When to use Bencher vs simpler timing
+
+**Use Bencher when you want to:**
+
+- Compare two or more implementations and understand the performance difference with statistical confidence
+- Diagnose *why* code is slow using IPC, branch miss rate, and cycles-per-byte data
+- Track performance over time in CI with structured JSON output
+- Benchmark memory-bound code accurately with consistent cache state
+
+**A simple `std::chrono` loop is enough when you:**
+
+- Need a one-off sanity check ("does this take microseconds or milliseconds?")
+- Are prototyping and don't need reproducible results
+- Have no C++23 compiler available

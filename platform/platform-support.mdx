@@ -1,0 +1,44 @@
+---
+title: "Platform Support"
+description: "Hardware performance counter availability across operating systems and CPU architectures."
+---
+
+Bencher runs on Windows, Linux, and macOS (including Apple Silicon). The set of hardware performance counters available depends on the platform and architecture.
+
+## Hardware Performance Counters
+
+| Platform | Architecture | Counters Available |
+|----------|--------------|-------------------|
+| macOS | ARM64 (Apple Silicon) | Cycles, Instructions, Branches, Branch Misses |
+| macOS | x86_64 | Cycles, Instructions, Branches, Branch Misses |
+| Linux | x86_64 | Cycles, Instructions, Branches, Branch Misses |
+| Linux | ARM64 | Cycles, Instructions, Branches, Branch Misses |
+| Windows | x86_64 | Cycles (via RDTSC only) |
+
+<Note>
+  On macOS, full performance counter access requires root privileges. Bencher uses Apple's private `kperf.framework` to read hardware counters, which is restricted to root. Without root, timing measurements (`throughput`, `time_in_ns`) are still available via `clock_gettime`.
+</Note>
+
+<Warning>
+  On Windows, only cycle counting via RDTSC is available. Unlike Linux and macOS, Windows lacks a user-space API for CPU performance counters without kernel drivers. This means instruction counts, branch counts, and branch miss data are not collected. Throughput and timing measurements work correctly on Windows. For full metrics (instructions, branches, branch misses), use external profilers like [Intel VTune](https://www.intel.com/content/www/us/en/developer/tools/oneapi/vtune-profiler.html) or [AMD uProf](https://www.amd.com/en/developer/uprof.html) alongside Bencher.
+</Warning>
+
+## Thread Affinity on Linux
+
+Scheduler migrations between CPU cores can introduce variance in benchmark results. To pin your benchmark process to a single core, use `taskset`:
+
+```bash
+taskset -c 0 ./my_benchmark
+```
+
+This is optional. Bencher's statistical approach — running multiple iterations and computing confidence intervals — already handles most scheduler-induced variance. `taskset` is most useful when you need the lowest possible measurement noise on a dedicated machine.
+
+## macOS Permissions
+
+To get full hardware counter access on macOS, run your benchmark with `sudo`:
+
+```bash
+sudo ./my_benchmark
+```
+
+Without root, Bencher silently falls back to timing-only mode. You will still see throughput (MB/s) and `time_in_ns` in the output, but counter-derived metrics such as IPC, instructions per execution, and branch misses will not be reported.

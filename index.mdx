@@ -1,97 +1,85 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Bencher — C++ Benchmarking Library"
+description: "A modern, header-only C++23 benchmarking library with hardware performance counter support and automatic statistical analysis."
 ---
 
-## Setting up
+Bencher is a header-only C++23 library for writing precise, reproducible benchmarks. It collects hardware performance counters, applies rigorous statistical analysis, and produces actionable output — all without any linking step.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Write your first benchmark in minutes with a complete working example.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="download" href="/installation">
+    Add Bencher to your project via CMake FetchContent or manual copy.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Core Concepts" icon="book" href="/concepts/stages">
+    Understand stages, metrics, and the statistical model behind Bencher.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/stage">
+    Full reference for every public type, function, and configuration option.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why Bencher?
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Header-only" icon="file-code">
+    Single `#include` — no build system integration beyond adding the include path.
+  </Card>
+  <Card title="Hardware counters" icon="microchip">
+    Reads CPU cycles, instructions, branches, and branch misses directly from hardware on macOS, Linux, and Windows.
+  </Card>
+  <Card title="Rigorous statistics" icon="chart-line">
+    Runs until a 95% confidence interval converges, then reports median and MAD — not noisy means.
+  </Card>
+  <Card title="Multiple output formats" icon="file-export">
+    Console output, Markdown reports, SVG bar charts, and optional JSON for CI pipelines.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Get started
 
-## Need inspiration?
+<Steps>
+  <Step title="Add Bencher to your CMake project">
+    ```cmake CMakeLists.txt
+    include(FetchContent)
+    FetchContent_Declare(
+        bencher
+        GIT_REPOSITORY https://github.com/stephenberry/bencher.git
+        GIT_TAG main
+    )
+    FetchContent_MakeAvailable(bencher)
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    target_link_libraries(your_target PRIVATE bencher::bencher)
+    ```
+  </Step>
+  <Step title="Write your first benchmark">
+    ```cpp benchmark.cpp
+    #include "bencher/bencher.hpp"
+    #include "bencher/diagnostics.hpp"
+
+    int main()
+    {
+       bencher::stage stage{"My Benchmarks"};
+
+       stage.run("Algorithm A", [&] {
+          // code to benchmark
+          return bytes_processed;
+       });
+
+       bencher::print_results(stage);
+       return 0;
+    }
+    ```
+  </Step>
+  <Step title="Build and run">
+    ```bash
+    cmake -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build
+    ./build/benchmark
+    ```
+  </Step>
+  <Step title="Interpret the results">
+    Bencher prints throughput, hardware counters, and a comparison bar chart automatically. See [Performance Metrics](/concepts/metrics) for a full explanation of every field.
+  </Step>
+</Steps>

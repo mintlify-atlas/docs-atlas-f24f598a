@@ -1,0 +1,187 @@
+---
+title: "Output Functions"
+description: "Functions for printing and exporting benchmark results."
+---
+
+Output functions are declared in `bencher/diagnostics.hpp` (and `bencher/file.hpp` for `save_file()`).
+
+```cpp
+#include "bencher/diagnostics.hpp"
+#include "bencher/file.hpp"
+```
+
+## `print_results()`
+
+```cpp
+inline void print_results(const bencher::stage& stage, bool show_comparison = true);
+```
+
+Prints all benchmark metrics to stdout in a human-readable columnar format. When `show_comparison` is `true` and there are multiple results, also prints:
+
+- Percentage speedup of each benchmark relative to the baseline (either the name specified in `stage.baseline`, or the slowest result when `baseline` is empty).
+- A Unicode bar chart scaled to the fastest result.
+
+---
+
+## `to_markdown()`
+
+```cpp
+inline std::string to_markdown(const bencher::stage& stage);
+```
+
+Generates a Markdown-formatted report string. Results are sorted by `throughput_mb_per_sec` descending (fastest first) using `performance_metrics::operator>`). Returns the Markdown string — use `save_file()` to write to disk.
+
+---
+
+## `bar_chart()`
+
+```cpp
+inline std::string bar_chart(const bencher::stage& stage, chart_config cfg = {});
+```
+
+Generates an SVG bar chart comparing all benchmark results. Returns the SVG as a string. The `chart_config` struct (from `bencher/bar_chart.hpp`) is defined in the global namespace and exposes the following fields:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `chart_width` | `double` | `1000` | Overall SVG width in pixels. |
+| `chart_height` | `double` | `600` | Overall SVG height in pixels. |
+| `margin_left` | `double` | `120` | Left margin (space for Y-axis labels). |
+| `margin_right` | `double` | `50` | Right margin. |
+| `margin_top` | `double` | `80` | Top margin (space for title). |
+| `margin_bottom` | `double` | `120` | Bottom margin (space for bar labels). |
+| `y_axis_label` | `std::string` | `"MB/s"` | Y-axis label. Defaults to `stage.throughput_units_label` when empty. |
+| `x_axis_label` | `std::string` | `""` | X-axis label displayed below the bars. |
+| `title` | `std::string` | `""` | Chart title displayed at the top. |
+| `colors` | `std::vector<std::string>` | `themes::bright` | Bar colors. Use `themes::bright` or `themes::dark`, or supply custom hex strings. |
+| `label_rotation` | `double` | `-45.0` | Rotation angle for bar labels in degrees (`0` = horizontal, `-90` = vertical). |
+| `background_color` | `std::string` | `"#FFFFFF"` | Chart background color. |
+| `font_size_title` | `double` | `32.0` | Font size for the chart title. |
+| `font_size_axis_label` | `double` | `28.0` | Font size for axis labels. |
+| `font_size_tick_label` | `double` | `22.0` | Font size for Y-axis tick labels. |
+| `font_size_bar_label` | `double` | `24.0` | Font size for bar name labels. |
+| `font_size_value_label` | `double` | `24.0` | Font size for value labels shown above bars. |
+
+<Note>
+`chart_config` and `themes` are defined in the global namespace in `bencher/bar_chart.hpp`, not in the `bencher::` namespace.
+</Note>
+
+---
+
+## `save_file()`
+
+```cpp
+inline bool save_file(const std::string& contents, const std::string& path);
+```
+
+Writes a string to a file at `path`. Returns `true` on success, `false` if the file could not be opened. Works with any string content — Markdown, SVG, JSON, etc.
+
+<Note>
+`save_file()` is declared in `bencher/file.hpp`, which is included transitively by `bencher/bencher.hpp`.
+</Note>
+
+---
+
+## `format_bar_chart()` / `print_bar_chart()`
+
+Lower-level functions that render a Unicode bar chart for arbitrary name/value pairs. Used internally by `print_results()`.
+
+```cpp
+inline std::string format_bar_chart(const std::vector<std::string>& names,
+                                    const std::vector<double>& values);
+
+inline void print_bar_chart(const std::vector<std::string>& names,
+                            const std::vector<double>& values);
+```
+
+`format_bar_chart()` returns the chart as a string. `print_bar_chart()` writes it directly to `stdout`. Both require `names` and `values` to have the same length; `print_bar_chart()` prints an error to `stderr` and returns early if they do not match.
+
+The chart uses Unicode block characters (▏▎▍▌▋▊▉█) at 1/8-character precision for smooth bar rendering.
+
+---
+
+## `generate_line_chart_svg()`
+
+```cpp
+#include "bencher/line_chart.hpp"
+
+std::string generate_line_chart_svg(const std::vector<std::string>& x_labels,
+                                    const std::vector<line_series>& series,
+                                    const line_chart_config& cfg);
+```
+
+Generates a multi-series SVG line chart. Useful for visualizing parameterized benchmark results across different input sizes. `generate_line_chart_svg`, `line_series`, and `line_chart_config` are defined in the global namespace in `bencher/line_chart.hpp`.
+
+```cpp
+line_series s1{"std::sort", {1200.0, 850.0, 600.0, 310.0}};
+line_series s2{"std::stable_sort", {980.0, 720.0, 490.0, 240.0}};
+
+line_chart_config cfg;
+cfg.title = "Sort Scaling";
+cfg.y_axis_label = "MB/s";
+cfg.x_values = {1000.0, 10000.0, 100000.0, 1000000.0};
+cfg.log_x = true;  // logarithmic x-axis for size scaling
+
+std::string svg = generate_line_chart_svg(
+    {"1K", "10K", "100K", "1M"},
+    {s1, s2},
+    cfg
+);
+bencher::save_file(svg, "scaling.svg");
+```
+
+### `line_series`
+
+```cpp
+struct line_series {
+    std::string name;
+    std::vector<double> values; // y-values, one per x_label
+};
+```
+
+### `line_chart_config`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `chart_width` | `double` | `1000` | SVG width in pixels. |
+| `chart_height` | `double` | `600` | SVG height in pixels. |
+| `y_axis_label` | `std::string` | `"MB/s"` | Y-axis label. |
+| `x_axis_label` | `std::string` | `""` | X-axis label. |
+| `title` | `std::string` | `""` | Chart title. |
+| `colors` | `std::vector<std::string>` | `themes::bright` | Per-series colors. |
+| `log_x` | `bool` | `false` | Logarithmic X-axis. Supply numeric `x_values` for accurate log scaling. |
+| `log_y` | `bool` | `false` | Logarithmic Y-axis. |
+| `x_values` | `std::vector<double>` | `{}` | Numeric X-values for log scaling. Must match the number of x-labels. |
+| `dot_radius` | `double` | `5.0` | Radius of data point circles. |
+| `line_width` | `double` | `2.5` | Line stroke width. |
+| `background_color` | `std::string` | `"#FFFFFF"` | Chart background color. |
+
+---
+
+## Complete example
+
+```cpp
+#include "bencher/bencher.hpp"
+#include "bencher/diagnostics.hpp"
+
+int main()
+{
+   bencher::stage stage{"Sorting Algorithms"};
+   stage.run("std::sort", [&] { /* ... */ return bytes; });
+   stage.run("std::stable_sort", [&] { /* ... */ return bytes; });
+
+   // Console output with comparison and bar chart
+   bencher::print_results(stage);
+
+   // Save Markdown and SVG reports
+   bencher::save_file(bencher::to_markdown(stage), "results.md");
+   bencher::save_file(bencher::bar_chart(stage), "results.svg");
+
+   // Custom SVG with dark theme (chart_config is global namespace, not bencher::)
+   chart_config cfg{};
+   cfg.title = "Sorting Algorithms";
+   cfg.colors = themes::dark;
+   bencher::save_file(bencher::bar_chart(stage, cfg), "results_dark.svg");
+
+   return 0;
+}
+```

@@ -1,0 +1,46 @@
+---
+title: "Cache Management"
+description: "How Bencher manages CPU caches to produce consistent benchmark results."
+---
+
+CPU cache state has a significant effect on benchmark results. If the L1 data cache is warm when a benchmark runs, the results may not reflect real-world performance for workloads that process new data on each invocation. Bencher manages cache state automatically to give you control over this.
+
+## What Bencher Does Automatically
+
+- **L1 cache eviction between runs**: When `cold_cache = true` (the default), Bencher writes and flushes a buffer sized to exceed the L1 data cache before each iteration, ensuring each run starts with a cold cache.
+- **CPU frequency stabilization warmup**: Before the first run in a stage, Bencher performs a 1-second busy loop to bring the CPU to a stable operating frequency, reducing variance from thermal or power-management ramp-up effects.
+- **Runtime L1 cache size detection**: Bencher detects the L1 data cache size at runtime on each platform (via `sysctl` on macOS, `/sys/devices/system/cpu/` on Linux, and `GetLogicalProcessorInformation` on Windows) so the eviction buffer is sized correctly for the current machine.
+
+## The `cold_cache` Stage Flag
+
+The `cold_cache` field on `bencher::stage` controls whether the L1 cache is evicted before each benchmark iteration:
+
+```cpp
+bencher::stage stage{"My Stage"};
+stage.cold_cache = true;   // default: evict L1 cache before each run (cold-cache)
+stage.cold_cache = false;  // warm-cache: skip eviction (steady-state benchmarks)
+```
+
+## When to Use Warm-Cache (`cold_cache = false`)
+
+Set `cold_cache = false` when:
+
+- Benchmarking hot-path code that always runs with its working set in cache in production (e.g., a tight inner loop that processes the same small buffer repeatedly).
+- Measuring cache-friendly algorithms where cold-start performance is not representative of typical execution.
+- Comparing two implementations that have identical cache footprints and you only care about compute throughput.
+
+## When to Use Cold-Cache (default)
+
+Keep the default `cold_cache = true` when:
+
+- Benchmarking I/O-bound or data-processing operations that receive new data on each call.
+- Comparing algorithms with different cache footprints — cold-cache measurements will surface cache efficiency differences.
+- Measuring startup or first-call performance.
+
+<Tip>
+  If two algorithms have similar throughput under warm-cache conditions but one has a much larger working set, setting `cold_cache = true` will expose the difference. The algorithm with worse cache behavior will show a larger throughput drop when the cache is cold.
+</Tip>
+
+<Note>
+  Bencher evicts the L1 data cache only. L2 cache, L3 cache, and TLB state are not explicitly managed. If your workload is sensitive to L2/L3 state, results may still be influenced by cache contents from previous runs.
+</Note>

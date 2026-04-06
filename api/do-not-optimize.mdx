@@ -1,0 +1,92 @@
+---
+title: "bencher::do_not_optimize"
+description: "Prevent the compiler from optimizing away benchmark code."
+---
+
+```cpp
+#include "bencher/bencher.hpp"        // transitively includes do_not_optimize.hpp
+// or include directly:
+#include "bencher/do_not_optimize.hpp"
+```
+
+## Why it's needed
+
+Compilers are permitted to eliminate any computation whose result is never observably used. In a benchmark loop, a function that produces a local variable and never stores, prints, or returns it may be entirely deleted by the optimizer — leaving the benchmark measuring nothing but loop overhead.
+
+`do_not_optimize` inserts a platform-specific barrier that forces the compiler to treat a value as observed, preventing dead-code elimination without adding meaningful runtime cost.
+
+## Implementation
+
+The barrier is implemented per-platform in `do_not_optimize.hpp`:
+
+- **Clang**: `asm volatile("" : "+r,m"(value) : : "memory");`
+- **GCC**: `asm volatile("" : "+m,r"(value) : : "memory");`
+- **MSVC**: `use_char_pointer(&reinterpret_cast<char const volatile&>(value)); _ReadWriteBarrier();`
+
+In all cases the address of the value (or the result of the callable) is written to a `volatile` global pointer, which the compiler cannot prove is unobserved.
+
+## Overloads
+
+There are three overloads selected via C++20 concepts.
+
+### Value overload
+
+Prevents a non-callable value from being optimized away:
+
+```cpp
+template <not_invocable T>
+BENCH_ALWAYS_INLINE void do_not_optimize(T&& value);
+```
+
+Accepts any type that is **not** callable (i.e., does not satisfy `std::invocable`). Takes the address of `value` and passes it through the barrier macro.
+
+### Callable (void return) overload
+
+Calls a void-returning callable and prevents it from being eliminated:
+
+```cpp
+template <invocable_void Function, class... Args>
+BENCH_ALWAYS_INLINE void do_not_optimize(Function&& value, Args&&... args);
+```
+
+Invokes `value(args...)` and then applies the barrier to `value` itself.
+
+### Callable (non-void return) overload
+
+Calls a callable and prevents its return value from being optimized away:
+
+```cpp
+template <invocable_not_void Function, class... Args>
+BENCH_ALWAYS_INLINE void do_not_optimize(Function&& value, Args&&... args);
+```
+
+Invokes `value(args...)`, captures the result in a local variable, and applies the barrier to that result.
+
+## Usage examples
+
+```cpp
+// Prevent a computed value from being eliminated
+stage.run("Compute", [] {
+   double result = expensive_computation();
+   bencher::do_not_optimize(result);
+   return sizeof(result);
+});
+
+// Prevent a container from being eliminated
+stage.run("Sort", [&] {
+   auto copy = data;
+   std::sort(copy.begin(), copy.end());
+   bencher::do_not_optimize(copy);
+   return copy.size() * sizeof(int);
+});
+
+// Works with callable types — calls the function and prevents the result from escaping
+stage.run("Hash", [&] {
+   bencher::do_not_optimize(hash_function, input);
+   return input.size();
+});
+```
+
+<Warning>
+Always call `do_not_optimize` on any results your benchmark computes. If you omit it, the compiler may detect that the result is unused and skip the computation entirely, producing artificially fast (meaningless) timings.
+</Warning>

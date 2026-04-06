@@ -1,0 +1,151 @@
+---
+title: "Output Formats"
+description: "Print results to the console, generate Markdown reports, SVG bar charts, and JSON output."
+---
+
+## Console output
+
+```cpp
+bencher::print_results(stage);        // metrics + comparison bar chart
+bencher::print_results(stage, false); // metrics only, no comparison
+```
+
+`print_results` is declared in `bencher/diagnostics.hpp`.
+
+### Metrics block
+
+Each subject gets a block showing all available metrics. Hardware counter fields (instructions, cycles, branches) are omitted on platforms where they are unavailable.
+
+```
+Performance Metrics for: JSON benchmarks
+----------------------------------------------------
+ - JSON Read -
+Bytes Processed                         :        722
+Throughput (MB/s)                        :       1847
+Throughput MAD (±%)                      :       1.2
+Instructions per Execution              :      45023
+Instructions per Cycle                  :       2.31
+Cycles per Execution                    :      19487
+Frequency (GHz)                         :       3.21
+Total Iterations                        :         47
+====================================================
+```
+
+### Comparison bar chart
+
+When more than one subject is registered and `show_comparison` is `true` (the default), `print_results` appends a percentage comparison and a Unicode bar chart:
+
+```
+JSON Write is 23.5% faster than JSON Read
+====================================================
+
+████████████████████████████████████████│ JSON Write (2284)
+████████████████████████████████▍       │ JSON Read (1847)
+```
+
+The comparison is relative to the baseline (slowest subject by default, or the name set in `stage.baseline`). See [Basic Benchmarking](/guides/basic-benchmarking) for details on the baseline setting.
+
+---
+
+## Markdown report
+
+```cpp
+std::string markdown = bencher::to_markdown(stage);
+bencher::save_file(markdown, "results.md");
+```
+
+`to_markdown` is declared in `bencher/diagnostics.hpp`. Results are sorted by throughput, fastest first. The output is a self-contained Markdown document suitable for attaching to a GitHub PR comment or committing as a build artifact.
+
+---
+
+## SVG bar chart
+
+```cpp
+std::string svg = bencher::bar_chart(stage);
+bencher::save_file(svg, "results.svg");
+```
+
+`bar_chart` is declared in `bencher/diagnostics.hpp`.
+
+### Customizing the chart
+
+Pass a `chart_config` struct as the second argument to `bar_chart()` to control dimensions, labels, and colors. `chart_config` and `themes` are defined in the global namespace in `bencher/bar_chart.hpp`:
+
+```cpp
+chart_config cfg;
+cfg.chart_width = 1000;
+cfg.chart_height = 600;
+cfg.title = "Performance Comparison";
+cfg.colors = themes::dark; // themes::bright (default) or themes::dark
+
+std::string svg = bencher::bar_chart(stage, cfg);
+bencher::save_file(svg, "results.svg");
+```
+
+Available themes:
+
+| Theme | Description |
+|---|---|
+| `themes::bright` | Vibrant colors for light backgrounds |
+| `themes::dark` | Deep colors for dark backgrounds |
+
+When `cfg.y_axis_label` is left empty, `bar_chart` automatically uses `stage.throughput_units_label`.
+
+---
+
+## JSON output
+
+JSON output requires the Glaze dependency, enabled at configure time:
+
+```cmake
+set(BENCHER_ENABLE_JSON ON)
+FetchContent_MakeAvailable(bencher)
+```
+
+Then include the JSON header and call the output functions:
+
+```cpp
+#include "bencher/json.hpp"
+
+std::string json        = bencher::to_json(stage);
+std::string json_pretty = bencher::to_json_pretty(stage);
+```
+
+### Example output
+
+```json
+{
+  "name": "JSON benchmarks",
+  "results": [
+    {
+      "name": "JSON Read",
+      "throughput_mb_per_sec": 1847.3,
+      "time_in_ns": 856420,
+      "bytes_processed": 722,
+      "instructions_per_execution": 45023,
+      "instructions_per_cycle": 2.31,
+      "total_iteration_count": 47
+    }
+  ]
+}
+```
+
+Fields with no value — for example, hardware counters that are unavailable on the current platform — are automatically excluded from the output.
+
+See [CI Integration](/guides/ci-integration) for how to use JSON output in automated pipelines.
+
+---
+
+## Saving files
+
+```cpp
+bencher::save_file(content, "filename");
+```
+
+`save_file` writes any string to a file. It works with Markdown, SVG, JSON, or any other string content:
+
+```cpp
+bencher::save_file(bencher::to_markdown(stage), "results.md");
+bencher::save_file(bencher::bar_chart(stage),   "results.svg");
+bencher::save_file(bencher::to_json_pretty(stage), "results.json");
+```

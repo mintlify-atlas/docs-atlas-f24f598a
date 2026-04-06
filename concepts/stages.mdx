@@ -1,0 +1,63 @@
+---
+title: "Stages"
+description: "Understanding the bencher::stage container."
+---
+
+A `bencher::stage` is the top-level container for a group of benchmarks. It holds all configuration that applies to the benchmarks within it — warmup behavior, iteration limits, statistical thresholds, and throughput units — and accumulates the results of every `run` call.
+
+## Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `std::string` | `""` | Display name used in reports and output |
+| `min_execution_count` | `uint64_t` | `30` | Minimum iterations before checking the confidence interval |
+| `max_execution_count` | `uint64_t` | `1000` | Hard cap on total iterations |
+| `confidence_interval_threshold` | `double` | `2.0` | Target ±% CI half-width; bencher stops early once this is reached |
+| `warmup_duration_ms` | `uint32_t` | `1000` | Warmup period in milliseconds to stabilize CPU frequency |
+| `cold_cache` | `bool` | `true` | When `true`, evicts the L1 cache between runs |
+| `baseline` | `std::string` | `""` | Name of the result to compare others against; empty compares to the slowest |
+| `throughput_units_divisor` | `double` | `1048576.0` | Divisor applied to bytes processed when computing throughput (default yields MB/s) |
+| `throughput_units_label` | `std::string` | `"MB/s"` | Label shown for the throughput column |
+| `processed_units_label` | `std::string` | `"Bytes"` | Label shown for the processed-units row |
+
+## Creating and configuring a stage
+
+```cpp
+bencher::stage stage{"Sorting Algorithms"};
+stage.baseline = "std::sort";              // compare all results to this
+stage.min_execution_count = 50;            // run at least 50 times
+stage.confidence_interval_threshold = 1.0; // tighter CI = more iterations
+```
+
+Multiple `run` calls on the same stage share the warmup and configuration, making it straightforward to compare related implementations side by side.
+
+## Warmup
+
+Before the first benchmark in a stage runs, bencher performs a busy-loop warmup for `warmup_duration_ms` milliseconds (default 1000 ms). The loop calls `cache_clearer::evict_l1_cache()` repeatedly during the warmup period. The goal is to bring the CPU out of a low-power state and stabilize its clock frequency before measurements begin.
+
+Warmup happens automatically and only once per stage. To disable it, set `warmup_duration_ms` to `0`.
+
+```cpp
+stage.warmup_duration_ms = 0; // skip warmup
+```
+
+## Cold-cache behavior
+
+With `cold_cache = true` (the default), bencher evicts the L1 data cache before every iteration. This gives each run a consistent cold-cache starting point, which is appropriate when you want to measure how an algorithm performs the first time it touches a dataset.
+
+For workloads where steady-state, cache-warm performance is more relevant — such as tight inner loops that operate on data already in cache — set `cold_cache` to `false`:
+
+```cpp
+stage.cold_cache = false; // warm-cache (steady-state) benchmarks
+```
+
+## Custom throughput units
+
+The default configuration computes throughput in MB/s. For non-byte workloads such as operations per second, override the divisor and labels:
+
+```cpp
+bencher::stage stage{"Queue Operations"};
+stage.throughput_units_divisor = 1.0;
+stage.throughput_units_label = "ops/s";
+stage.processed_units_label = "Ops";
+```

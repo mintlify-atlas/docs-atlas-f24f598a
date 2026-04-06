@@ -1,0 +1,124 @@
+---
+title: "bencher::performance_metrics"
+description: "The struct returned by each benchmark run, containing all collected metrics."
+---
+
+`performance_metrics` is populated by `bencher::stage::run()` and its variants after each benchmark completes. It is stored in `stage::results` and also returned by reference from `run()`.
+
+```cpp
+#include "bencher/bencher.hpp"
+```
+
+## Struct definition
+
+```cpp
+struct performance_metrics
+{
+   // Always present
+   double throughput_mb_per_sec{};
+   double time_in_ns{};
+   std::string name{};
+
+   // Statistical deviation metrics
+   std::optional<double> instructions_percentage_deviation;
+   std::optional<double> throughput_median_percentage_deviation;
+   std::optional<double> cycles_percentage_deviation;
+
+   // Instruction counter metrics
+   std::optional<double> instructions_per_execution;
+   std::optional<double> instructions_per_cycle;
+   std::optional<double> instructions_per_byte;
+
+   // Branch counter metrics
+   std::optional<double> branch_misses_per_execution;
+   std::optional<double> branches_per_execution;
+
+   // Cycle counter metrics
+   std::optional<double> cycles_per_execution;
+   std::optional<double> cycles_per_byte;
+   std::optional<double> frequency_ghz;
+
+   // Per-run data
+   std::optional<double> bytes_processed;
+   std::optional<uint64_t> total_iteration_count;
+};
+```
+
+`std::optional` fields are absent (`std::nullopt`) when the platform does not support the corresponding hardware performance counter (e.g., instruction and cycle counts require Linux perf events or macOS kperf; they are unavailable on Windows).
+
+## Fields
+
+<ResponseField name="name" type="std::string">
+  Name of the benchmark as passed to `run()` or `run_with()`.
+</ResponseField>
+
+<ResponseField name="throughput_mb_per_sec" type="double">
+  Median throughput in the configured units (MB/s by default). Computed as the median across all iterations of `(bytes_processed / throughput_units_divisor) / elapsed_seconds`. Always present; zero when the benchmark function returns `void`.
+</ResponseField>
+
+<ResponseField name="time_in_ns" type="double">
+  Sum of elapsed nanoseconds across all completed iterations. Always present.
+</ResponseField>
+
+<ResponseField name="throughput_median_percentage_deviation" type="std::optional<double>">
+  Median Absolute Deviation (MAD) of per-iteration throughput values, expressed as a percentage of the median throughput. Indicates measurement stability — lower is better. Present whenever `throughput_mb_per_sec` is non-zero.
+</ResponseField>
+
+<ResponseField name="instructions_per_execution" type="std::optional<double>">
+  Median hardware instruction count per iteration. Requires a platform with instruction-counting performance counters (Linux perf, macOS kperf).
+</ResponseField>
+
+<ResponseField name="instructions_per_cycle" type="std::optional<double>">
+  Median instructions divided by median cycles. A higher IPC indicates better CPU pipeline utilization. Present when both instruction and cycle counters are available.
+</ResponseField>
+
+<ResponseField name="instructions_per_byte" type="std::optional<double>">
+  Median instruction count divided by `bytes_processed`. Useful for comparing algorithmic efficiency across implementations that process different amounts of data. Present when instruction counters are available and `bytes_processed` is non-zero.
+</ResponseField>
+
+<ResponseField name="instructions_percentage_deviation" type="std::optional<double>">
+  Percentage difference between the median and minimum instruction count across iterations. A non-zero value can indicate branch mispredictions or data-dependent code paths. Present when instruction counters are available.
+</ResponseField>
+
+<ResponseField name="cycles_per_execution" type="std::optional<double>">
+  Median CPU cycle count per iteration. Present when cycle counters are available.
+</ResponseField>
+
+<ResponseField name="cycles_per_byte" type="std::optional<double>">
+  Median cycle count divided by `bytes_processed`. Present when cycle counters are available and `bytes_processed` is non-zero.
+</ResponseField>
+
+<ResponseField name="cycles_percentage_deviation" type="std::optional<double>">
+  Percentage difference between the median and minimum cycle count across iterations. Similar to `instructions_percentage_deviation`, indicates variability in execution cost. Present when cycle counters are available.
+</ResponseField>
+
+<ResponseField name="branches_per_execution" type="std::optional<double>">
+  Median branch instruction count per iteration. Present when branch counters are available and non-zero.
+</ResponseField>
+
+<ResponseField name="branch_misses_per_execution" type="std::optional<double>">
+  Median branch misprediction count per iteration. High values indicate code paths that are difficult for the CPU branch predictor. Present alongside `branches_per_execution`.
+</ResponseField>
+
+<ResponseField name="frequency_ghz" type="std::optional<double>">
+  Estimated CPU frequency in GHz, derived from the minimum cycle count divided by the minimum elapsed nanoseconds across iterations. Present when cycle counters are available.
+</ResponseField>
+
+<ResponseField name="bytes_processed" type="std::optional<double>">
+  The value returned by the benchmark function on the last iteration, cast to `double`. Used to compute throughput and per-byte metrics. Absent when the benchmark function returns `void`.
+</ResponseField>
+
+<ResponseField name="total_iteration_count" type="std::optional<uint64_t>">
+  The number of iterations that ran before the confidence interval threshold was met (or `max_execution_count` was reached). Useful for understanding whether a benchmark converged quickly or required many samples.
+</ResponseField>
+
+## Comparison operator
+
+```cpp
+BENCH_ALWAYS_INLINE bool operator>(const performance_metrics& other) const
+{
+   return throughput_mb_per_sec > other.throughput_mb_per_sec;
+}
+```
+
+Compares two results by `throughput_mb_per_sec`. Used by `to_markdown()`, which sorts results with `std::greater<performance_metrics>` to present the fastest benchmark first.

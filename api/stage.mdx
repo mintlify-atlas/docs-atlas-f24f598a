@@ -1,0 +1,143 @@
+---
+title: "bencher::stage"
+description: "The main benchmarking container — holds configuration and collects results."
+---
+
+`bencher::stage` is the central struct you interact with to configure and run benchmarks. It holds all configuration fields, drives the measurement loop, and accumulates results into its `results` vector.
+
+```cpp
+#include "bencher/bencher.hpp"
+```
+
+## Configuration fields
+
+<ParamField path="name" type="std::string" default='""'>
+  Display name used in reports and output functions.
+</ParamField>
+
+<ParamField path="min_execution_count" type="uint64_t" default="30">
+  Minimum number of iterations before checking the confidence interval stopping criterion.
+</ParamField>
+
+<ParamField path="max_execution_count" type="uint64_t" default="1000">
+  Maximum number of iterations. The benchmark stops here even if the CI threshold is not met.
+</ParamField>
+
+<ParamField path="confidence_interval_threshold" type="double" default="2.0">
+  Target relative half-width of the 95% confidence interval, expressed as a percentage. Benchmarking stops once the CI half-width is below this threshold relative to the mean throughput.
+</ParamField>
+
+<ParamField path="warmup_duration_ms" type="uint32_t" default="1000">
+  Duration in milliseconds of the initial busy-loop warmup to stabilize CPU frequency. Runs once per stage before the first benchmark. Set to `0` to skip.
+</ParamField>
+
+<ParamField path="cold_cache" type="bool" default="true">
+  When `true`, evicts the L1 data cache between iterations for cold-cache measurements. Set to `false` for warm-cache (steady-state) benchmarks.
+</ParamField>
+
+<ParamField path="baseline" type="std::string" default='""'>
+  Name of the benchmark to use as the baseline for comparison. If empty, the slowest result is used as the baseline.
+</ParamField>
+
+<ParamField path="throughput_units_divisor" type="double" default="1048576.0">
+  Divisor applied to the `bytes_processed` return value to compute throughput units. The default (`1024²`) yields MB/s. Set to `1.0` for ops/s.
+</ParamField>
+
+<ParamField path="throughput_units_label" type="std::string" default='"MB/s"'>
+  Label for the throughput unit shown in all output functions.
+</ParamField>
+
+<ParamField path="processed_units_label" type="std::string" default='"Bytes"'>
+  Label for the processed-units row shown in all output functions.
+</ParamField>
+
+## Member functions
+
+### `run()`
+
+```cpp
+template <class Function, class... Args>
+const performance_metrics& run(std::string_view subject_name,
+                               Function&& function,
+                               Args&&... args);
+```
+
+Runs a benchmark. The callable can:
+
+- **Return `uint64_t`** — interpreted as bytes processed, enabling throughput calculation.
+- **Return `void`** — latency-only measurement; throughput fields will be zero.
+
+Additional arguments in `args` are forwarded to `function` on every iteration.
+
+Returns a `const` reference to the `performance_metrics` for this run (stored in `results`).
+
+---
+
+### `run_with()`
+
+Two overloads — initializer list and range:
+
+```cpp
+template <class Function, class T>
+void run_with(std::string_view base_name,
+              Function&& function,
+              std::initializer_list<T> params);
+
+template <class Function, class Range>
+    requires std::ranges::input_range<Range>
+void run_with(std::string_view base_name,
+              Function&& function,
+              const Range& params);
+```
+
+Runs the benchmark once for each element in `params`. The parameter value is forwarded as the sole argument to `function`. Results are stored as `"base_name/param_value"`.
+
+```cpp
+stage.run_with("sort", [](size_t n) {
+   std::vector<int> v(n);
+   std::sort(v.begin(), v.end());
+   return n * sizeof(int);
+}, {1000, 10000, 100000});
+// Stores results: "sort/1000", "sort/10000", "sort/100000"
+```
+
+---
+
+### `run_with_setup()`
+
+```cpp
+template <class Setup, class Function>
+const performance_metrics& run_with_setup(std::string_view subject_name,
+                                          Setup&& setup,
+                                          Function&& function);
+```
+
+Runs a benchmark with per-iteration setup. `setup` is called before each iteration (untimed) and its return value is passed to `function` (timed). Use this when the benchmark mutates its input and fresh state is needed for each iteration.
+
+```cpp
+stage.run_with_setup("sort",
+   [] { return generate_random_data(10000); },  // untimed
+   [](auto& data) {                             // timed
+      std::sort(data.begin(), data.end());
+      return data.size() * sizeof(int);
+   }
+);
+```
+
+---
+
+### `warmup()`
+
+```cpp
+void warmup() const;
+```
+
+Performs the CPU frequency warmup busy-loop for `warmup_duration_ms` milliseconds. Called automatically before the first `run()` call in a stage. Idempotent — subsequent calls are no-ops (guarded by the `warmed_up` flag).
+
+## `results` field
+
+```cpp
+std::vector<performance_metrics> results{};
+```
+
+Accumulates one `performance_metrics` entry per `run()` / `run_with()` / `run_with_setup()` call, in the order they were invoked. Accessible directly for custom processing or integration with external tooling.

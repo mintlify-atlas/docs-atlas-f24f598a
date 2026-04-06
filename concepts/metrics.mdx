@@ -1,0 +1,45 @@
+---
+title: "Performance Metrics"
+description: "Understanding the metrics Bencher collects and reports."
+---
+
+Bencher collects the following metrics for every benchmark run. Hardware performance counter metrics are platform-dependent — see [Platform Support](/platform/platform-support) for details on which counters are available on your system.
+
+## Collected metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `throughput_mb_per_sec` | `double` | Processing speed in units/sec (MB/s by default) |
+| `throughput_median_percentage_deviation` | `optional<double>` | MAD of per-run throughput as ±%, measuring run-to-run consistency |
+| `instructions_per_execution` | `optional<double>` | Median CPU instructions executed per run |
+| `instructions_per_cycle` | `optional<double>` | CPU efficiency (IPC) — median instructions divided by median cycles |
+| `instructions_per_byte` | `optional<double>` | Median instructions per byte of data processed |
+| `cycles_per_execution` | `optional<double>` | Median CPU cycles consumed per run |
+| `cycles_per_byte` | `optional<double>` | Median CPU cycles per byte of data processed |
+| `branches_per_execution` | `optional<double>` | Median branch instructions per run |
+| `branch_misses_per_execution` | `optional<double>` | Median mispredicted branches per run |
+| `frequency_ghz` | `optional<double>` | Estimated CPU clock frequency derived from minimum cycles and minimum elapsed time |
+| `total_iteration_count` | `optional<uint64_t>` | Number of iterations bencher performed before the CI threshold was met |
+| `time_in_ns` | `double` | Total elapsed nanoseconds summed across all iterations |
+| `bytes_processed` | `optional<double>` | Data processed per run, as returned by the benchmark function |
+
+## Interpreting the metrics
+
+These reference ranges help assess whether a metric indicates efficient code. Values vary by CPU architecture and workload type — use them for relative comparisons between implementations, not as absolute targets.
+
+| Metric | Excellent | Typical | Poor | What it means |
+|--------|-----------|---------|------|---------------|
+| IPC | 3–4+ | 1.5–3 | < 1 | Low IPC suggests memory stalls, cache misses, or branch mispredictions |
+| Branch misses | < 1% | 1–3% | > 5% | High miss rate indicates unpredictable branches |
+| Throughput MAD | < 1% | 1–3% | > 5% | High variance suggests inconsistent performance or system noise |
+| Cycles per byte | < 1 | 1–10 | > 50 | Lower is better for throughput-oriented code |
+
+## When to investigate
+
+- **IPC < 1 with high cycles** — the workload is likely memory-bound; check cache access patterns and data locality.
+- **High branch misses** — consider lookup tables or branchless algorithms to reduce misprediction penalties.
+- **High throughput MAD** — background processes or thermal throttling may be injecting noise; try pinning to a single core with `taskset -c 0 ./my_benchmark` on Linux.
+
+<Warning>
+Compare relative, not absolute — these metrics differ by CPU architecture. Use them to compare implementations against each other, not against universal standards.
+</Warning>
